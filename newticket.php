@@ -1,11 +1,11 @@
 <?php
 /*****************
 
-Unfuddle Submit Ticket Page
+Import text file as new Unfuddle tickets
 
-Copyright (c) 2008 Ben Strackany
+Copyright (c) 2008 Ben Strackany with changes by Brian@brianyoungblood.com on 06/2012
 
-Lets users submit tickets to an Unfuddle project.
+Lets users import tickets into an Unfuddle project.
 
 Portions from Unfuddle's API code examples page (http://unfuddle.com/docs/api/code_examples)
  
@@ -54,10 +54,9 @@ define ("UNFUDDLE_PROJECTSHORTNAME", "yourproject");
 define ("UNFUDDLE_AUTH", "yourusername:yourpassword");
 
 /*** define some other variables ***/
-$project = get_project_details($projectshortname);
-$projectid = $project->id;
+$projectid = 2;
 
-$project_name = $project->title;
+$project_name = "home plans";
 
 $error = false;
 $message = false;
@@ -66,144 +65,47 @@ $priority = 3;
 $description = false;
 $yourname = $_COOKIE['ticketmakerusername'];
 
-process_page();
 
-?>
-<html>
-<head>
-<title><?=$project_name?> : Submit Ticket</title>
-<style>
 
-* { font-family: Arial,Helvetica; }
-label,input {
-	display: block;
-	float: left;
-	margin-bottom: 10px;
+//read the file into array
+$file_handle = fopen("newtickets.txt", "rb");
+
+while (!feof($file_handle) ) {
+
+$line_of_text = fgets($file_handle);
+$parts = explode(': ', $line_of_text);
+
+$subject = truncate_words($parts[1], 15, $ellipsis = '...');
+$description = $parts[1];
+$field1 = $parts[0];
+$appendnametodescription = 'John Doe';
+$priority = '1'; // 1-5. 1 is the lowest and matches unfuddle keys
+
+$ticket = create_ticket($subject, $appendnametodescription, $priority, $description,$field1);
+
+print '<b>[' . $ticket .'] ' .$parts[0] . '</b>: ' . $parts[1]. "<BR>";
+
 }
 
-label {
-	text-align: right;
-	width: 100px;
-	padding-right: 20px;
-	font-weight:bold; 
-    color:#777; 
-}
-input { border:1px solid #777; width:500px; padding:3px; }
-textarea { border:1px solid #777; float:left; width:500px; height:300px; padding:3px; }
+fclose($file_handle);
 
-br {
-	clear: left;
-}
-
-input#submit { 
-    margin:30px 0px 0px 120px; 
-    display:block; 
-    border:1px solid #777; 
-    padding:8px 16px;
-    width:auto; 
-    background-color:#eef; 
-    font-weight:bold; 
-    text-align:center; 
-}
-
-h3.error { color:red; text-align:center; font-weight:bold; }
-h3.message { color:blue; text-align:center; font-weight:bold; }
-form { border:2px solid #ccf; padding:30px; margin:30px auto; width:660px; display:block; }
-
-</style>
-</head>
-<body>
-
-<h1>Submit Ticket Form</h1>
-
-<p class="info">Please submit a ticket for the <?php echo $project_name ?> project. All fields are required.</p>
-
-<h3 class="error"><?php echo $error; ?></h3>
-<h3 class="message"><?php echo $message; ?></h3>
-    
-<form action="submitticket.php" method="POST">
-
-<label for="subject">Subject</label>
-<input name="subject" id="subject" value="<?=$subject?>">
-<br />
-
-<label for="yourname">Your Name</label>
-<input name="yourname" id="yourname" value="<?=$yourname?>">
-<br />
-
-<label for="subject">Priority</label>
-<select name="priority" id="priority">
-<option value="4" <?php if ($priority=="4") echo " selected ";?>>High</option>
-<option value="3" <?php if ($priority=="3") echo " selected ";?>>Normal</option>
-<option value="2" <?php if ($priority=="2") echo " selected ";?>>Low</option>
-</select>
-<br />
-
-<label for="description">Description</label>
-<textarea id="description" name="description"><?=$description?></textarea>
-<br />
-
-<input type="submit" id="submit" name="submit" value="Submit">
-
-<br style="clear:both;" />
-
-</form>
-
-</body>
-</html>
-
-<?php 
 
 /***** functions here ****/
 
-function process_page()
-{
-    global $error, $message, $subject, $description, $yourname;
 
-    if (!empty($_POST['submit']))
-    {
-        $subject = $_POST['subject'];
-        $yourname = $_POST['yourname'];
-        $description = $_POST['description'];
-        $priority = $_POST['priority'];
-    
-        if (empty($subject))
-            $error = "Please enter a subject.";
-        else if (empty($description))
-            $error = "Please enter a description.";
-        else if (empty($yourname))
-            $error = "Please enter your name.";
-        else
-        {
-        
-            $ticket_number = create_ticket($subject, $yourname, $priority, $description);
-            
-            if (!$ticket_number)
-                $error = "Could not create a ticket.";
-            else
-            {
-        		$url = "https://".UNFUDDLE_DOMAIN."/p/" . UNFUDDLE_PROJECTSHORTNAME . "/tickets/show/" . $ticket_number;
-        		
-                $message = "Ticket #" . $ticket_number . " created! You can <a href=\"" . $url . "\" target=\"_blank\">go here</a> to view the ticket.";
-                                
-                // remember for next time
-                setcookie("ticketmakerusername", $yourname, time()+60*60*24*30);
-                
-                // clear
-                $subject = '';
-                $description = '';
-                $priority = 3;
-                
-            }
-        
-        }
-    
+function truncate_words($text, $limit, $ellipsis = '...') {
+    $words = preg_split("/[\n\r\t ]+/", $text, $limit + 1, PREG_SPLIT_NO_EMPTY);
+    if ( count($words) > $limit ) {
+        array_pop($words);
+        $text = implode(' ', $words);
+        $text = $text . $excerpt_more;
     }
-
+    return $text;
 }
 
 
-function create_ticket($subject, $user, $priority, $description)
+
+function create_ticket($subject, $user, $priority, $description, $field1 = '')
 {
     global $projectid;
     
@@ -211,7 +113,7 @@ function create_ticket($subject, $user, $priority, $description)
     $config_address = 'https://' . UNFUDDLE_DOMAIN . '/api/v1/projects/' . $projectid . '/tickets';
     
     $postbody = "<ticket><priority>" . $priority . "</priority><summary>" . XMLStrFormat($subject) . "</summary>" . 
-        "<description>From " . XMLStrFormat($user) . "\n\n" . XMLStrFormat($description) . "</description></ticket>"; 
+        "<description>From " . XMLStrFormat($user) . ": \n\n" . XMLStrFormat($description) . "</description><field1-value>" . $field1 . "</field1-value></ticket>"; 
 
     $config_headers[] = "MIME-Version: 1.0";
     $config_headers[] = 'Accept: application/xml';
@@ -253,7 +155,7 @@ function create_ticket($subject, $user, $priority, $description)
     		break;
     	case 400:
     		// You may want to fall through here and read the specific XML error
-    		die('Your call to Unfuddle failed and returned an HTTP status of 400. That means:  Bad request. The parameters passed to the service did not match as expected. The exact error is returned in the XML response.');
+    		die('Your call to Unfuddle failed and returned an HTTP status of 400. That means:  Bad request. The parameters passed to the service did not match as expected. The exact error is returned in the XML response.' . $response);
     		break;
     	default:
     		die('Your call to Unfuddle returned an unexpected HTTP status of:' . $status_code[0]);
@@ -350,7 +252,7 @@ function get_project_details($project_short_name)
     curl_setopt($chandle, CURLOPT_CUSTOMREQUEST, $config_method);
     $output = curl_exec($chandle);
     curl_close($chandle);
-    
+    echo $output;
     $xml = new SimpleXMLElement($output);
 
     if (!$xml)
